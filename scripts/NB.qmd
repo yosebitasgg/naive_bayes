@@ -1,0 +1,93 @@
+---
+title: "NB"
+format: html
+editor: visual
+---
+
+```{r}
+library(bnlearn)
+library(tidyverse)
+```
+
+```{r}
+library(tidytext)
+library(knitr)
+library(stringr)
+```
+
+```{r}
+texto = read.csv("../data/ghost_stories_15000.csv")
+```
+
+```{r}
+texto <- texto |>
+  mutate(category = str_trim(category),
+         category = na_if(category, ""),
+         category = if_else(is.na(category), "Unknown", category))
+
+```
+
+
+```{r}
+texto |>
+  distinct(category)
+```
+
+```{r}
+words <- texto |>
+  unnest_tokens(word, story) |>
+  filter(!str_detect(word, "^[0-9]+$"))        
+```
+
+
+```{r}
+words |>
+  count(category, word, sort = TRUE) |>
+  group_by(category) |>
+  slice_head(n = 10) |>
+  pivot_wider(
+    names_from = category, 
+    values_from = n,
+    values_fn = as.character,
+    values_fill = "Not in top 10"
+    ) |>
+  kable()
+```
+
+```{r}
+stop_words
+```
+
+```{r}
+words <- words |>
+  anti_join(stop_words, by = "word")
+```
+
+```{r}
+words |>
+  count(category, word, sort = TRUE) |>
+  group_by(category) |>
+  slice_head(n = 10) |>
+  pivot_wider(
+    names_from = category, 
+    values_from = n,
+    values_fn = as.character,
+    values_fill = "Not in top 10"
+    ) |>
+  kable()
+```
+
+```{r}
+words |>
+  count(category, word, sort = TRUE) |>
+  group_by(category) |>
+  slice_head(n = 6) |>
+  ggplot(aes(y = reorder_within(word, n, category), x = n, fill = category)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~category, scales = "free") +
+  scale_y_reordered() +
+  labs(y = NULL)
+```
+
+> Con estas repeticiones de palabras nos podemos dar una idea de como el modelo va a a predecir las categorias, ya que tomaría en cuenta la repetición y conteo de palabras por cada categoría.
+
