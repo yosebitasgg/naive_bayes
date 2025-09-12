@@ -1,0 +1,188 @@
+---
+title: "webscrapping"
+format: html
+editor: visual
+---
+
+# WebScrapping
+
+## Extracción de los datos
+
+### Verificación
+
+Verificamos si podemos realizar webscrapping de la pagina "https://www.yourghoststories.com/"
+
+```{r}
+install.packages("robotstxt")
+```
+```{r}
+install.packages("rvest")
+```
+
+```{r}
+library(robotstxt)
+library(rvest)
+```
+```{r}
+library(dplyr)
+library(stringr)
+```
+```{r}
+paths_allowed("https://www.yourghoststories.com/")
+```
+
+Si podemos realizarlo.
+
+### Lectura de la página
+
+```{r}
+page <- read_html("https://www.yourghoststories.com/real-ghost-story.php?story=1")
+page
+```
+```{r}
+typeof(page)
+```
+```{r}
+class(page)
+```
+
+
+### Extraccion
+
+#### Titulos
+
+```{r}
+titles <- page %>%
+  html_nodes(".storytitle") %>%
+  html_text()
+
+titles
+```
+#### Lugar
+
+```{r}
+story <- page %>%
+  html_nodes(".storyinfo") %>%
+  html_text()
+story
+```
+```{r}
+df <- tibble(
+  title = titles,
+  raw   = story[-1]   # quitamos el primer raw
+) %>%
+  mutate(
+    country  = str_extract(raw, "(?<=Country: ).*?(?=State:)"),
+    state    = str_extract(raw, "(?<=State: ).*?(?=Paranormal Category:)"),
+    category = str_extract(raw, "(?<=Paranormal Category: ).*")
+  ) %>%
+  select(title, country, state, category)
+
+df
+```
+
+
+#### Descripcion
+```{r}
+story_paras <- page %>%
+  html_elements("div#story p") %>%
+  html_text2()
+
+# Unir en un solo texto limpio
+story_text <- paste(story_paras, collapse = "\n\n")
+
+story_text
+```
+
+```{r}
+df_final <- tibble(
+  title    = titles,        # Solo el primer título
+  country  = df$country,    # Primera fila
+  state    = df$state,
+  category = df$category,
+  story    = story_text
+)
+
+df_final
+```
+```{r}
+df_final <- tibble()
+
+# Ciclo de 1 a 1000
+for(i in 1:1000) {
+  
+  # Construir la URL con el número de página actual
+  url <- paste0("https://www.yourghoststories.com/real-ghost-story.php?story=", i)
+  
+  # Intentar leer la página
+  page <- try(read_html(url), silent = TRUE)
+  
+  # Si hay error, pasar a la siguiente
+  if(class(page)[1] == "try-error") {
+    next
+  }
+  
+  # Extraer título
+  titles <- page %>%
+    html_nodes(".storytitle") %>%
+    html_text()
+  
+  # Si no hay título, pasar a la siguiente
+  if(length(titles) == 0) {
+    next
+  }
+  
+  # Extraer información del lugar
+  story <- page %>%
+    html_nodes(".storyinfo") %>%  # CAMBIO: usar .storyinfo
+    html_text()
+  
+  # Crear df con la información del lugar
+  df <- tibble(
+    title = titles,
+    raw   = story[-1]   # quitamos el primer raw
+  ) %>%
+    mutate(
+      country  = str_extract(raw, "(?<=Country: ).*?(?=State:)"),
+      state    = str_extract(raw, "(?<=State: ).*?(?=Paranormal Category:)"),
+      category = str_extract(raw, "(?<=Paranormal Category: ).*")
+    ) %>%
+    select(title, country, state, category)
+  
+  # Extraer descripción
+  story_paras <- page %>%
+    html_elements("div#story p") %>%
+    html_text2()
+  
+  # Unir en un solo texto limpio
+  story_text <- paste(story_paras, collapse = "\n\n")
+  
+  # Crear dataframe temporal con la información de esta página
+  df_temp <- tibble(
+    story_id = i,           # Agregar el ID de la historia
+    title    = titles,      
+    country  = df$country,  
+    state    = df$state,
+    category = df$category,
+    story    = story_text
+  )
+  
+  # Agregar al dataframe final
+  df_final <- bind_rows(df_final, df_temp)
+  
+  # Mensaje de progreso (opcional)
+  if(i %% 50 == 0) {
+    cat("Procesando historia", i, "\n")
+  }
+  
+  # Pequeña pausa para no sobrecargar el servidor
+  Sys.sleep(0.5)
+}
+
+# Ver el resultado final
+df_final
+```
+```{r}
+View(df_final)
+```
+
