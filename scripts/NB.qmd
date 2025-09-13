@@ -190,8 +190,6 @@ train_df <- as.data.frame(as.matrix(X_train))
 train_df$category <- as.factor(y_train)
 ```
 
-
-
 ```{r}
 library(e1071) 
 library(yardstick)
@@ -207,27 +205,31 @@ pred <- predict(nb_model, test_df)
 ```
 
 #### Matriz de Confusión
+
 ```{r}
 conf_mat <- table(Predicho = pred, Real = y_test)
 print(conf_mat)
-``` 
+```
+
 Clase real "Apparitions / Voices / Touches"
 
-- 28 veces se predijo correctamente.
+-   28 veces se predijo correctamente.
 
-- 46 veces fueron mal clasificadas como esa clase cuando en realidad eran "Haunted Places".
+-   46 veces fueron mal clasificadas como esa clase cuando en realidad eran "Haunted Places".
 
 Clase real "Haunted Places"
 
-- 0 aciertos, el modelo nunca la predijo.
+-   0 aciertos, el modelo nunca la predijo.
 
 Esto ya explica el sesgo del clasificador: solo aprende a reconocer la clase mayoritaria.
 
 #### Accuracy
+
 ```{r}
 accuracy <- mean(pred == y_test)
 cat("Accuracy:", accuracy, "\n")
 ```
+
 Es bajo: el modelo acierta poco más de 1 de cada 3 casos.
 
 #### Métricas por clase
@@ -269,8 +271,8 @@ Recall = 0: había ejemplos reales, pero el modelo no reconoció ninguno.
 
 F1 = NA: no hay balance posible, ya que no predijo nada bien de esta clase.
 
-
 #### Función naive_bayes()
+
 ```{r}
 install.packages("naivebayes")
 ```
@@ -296,4 +298,131 @@ print(conf_mat2)
 accuracy2 <- mean(pred2 == y_test)
 cat("Accuracy (naive_bayes):", accuracy2, "\n")
 ```
+
 No existe ninguna diferencia entre ambos clasificadores.
+
+Dicotomizaremos el tipo de evento paranormal con ayuda de la función case_when()
+
+```{r}
+df2 <- df2 %>%
+  mutate(category_bin = case_when(
+    category == "Haunted Places" ~ "Haunted Places",
+    TRUE ~ "Other"
+  ))
+
+labels_bin <- df2$category_bin[match(as.integer(rownames(X)), df2$doc_id)]
+```
+
+Naïve Bayes con ambas funciones:
+
+```{r}
+set.seed(123)
+split_bin <- initial_split(
+  tibble(doc_id = rownames(X),
+         category = labels_bin),
+  prop = 0.8,
+  strata = category
+)
+
+train_ids_bin <- training(split_bin)$doc_id
+test_ids_bin  <- testing(split_bin)$doc_id
+
+train_index_bin <- match(train_ids_bin, rownames(X))
+test_index_bin  <- match(test_ids_bin, rownames(X))
+
+X_train_bin <- X[train_index_bin, ]
+y_train_bin <- labels_bin[train_index_bin]
+
+X_test_bin  <- X[test_index_bin, ]
+y_test_bin  <- labels_bin[test_index_bin]
+
+train_df_bin <- as.data.frame(as.matrix(X_train_bin))
+train_df_bin$category <- as.factor(y_train_bin)
+
+test_df_bin <- as.data.frame(as.matrix(X_test_bin))
+```
+
+```{r}
+library(e1071)
+
+nb_model_bin <- naiveBayes(category ~ ., data = train_df_bin, laplace = 1)
+pred_bin <- predict(nb_model_bin, test_df_bin)
+
+conf_mat_bin <- table(Predicho = pred_bin, Real = y_test_bin)
+print(conf_mat_bin)
+
+accuracy_bin <- mean(pred_bin == y_test_bin)
+cat("Accuracy (binario - naiveBayes):", accuracy_bin, "\n")
+```
+
+```{r}
+library(naivebayes)
+
+nb_model2_bin <- naive_bayes(category ~ ., data = train_df_bin, laplace = 1)
+pred2_bin <- predict(nb_model2_bin, newdata = test_df_bin)
+
+conf_mat2_bin <- table(Predicho = pred2_bin, Real = y_test_bin)
+print(conf_mat2_bin)
+
+accuracy2_bin <- mean(pred2_bin == y_test_bin)
+cat("Accuracy (binario - naive_bayes):", accuracy2_bin, "\n")
+```
+
+**NO** hubieron mejoras :c, Ahora implementaremos una distribucion de Poisson c:\<
+
+```{r}
+nb_model_poisson <- naive_bayes(category ~ ., 
+                                data = train_df_bin, 
+                                usepoisson = TRUE, 
+                                laplace = 1)
+
+pred_poisson <- predict(nb_model_poisson, newdata = test_df_bin)
+
+conf_mat_poisson <- table(Predicho = pred_poisson, Real = y_test_bin)
+print(conf_mat_poisson)
+
+accuracy_poisson <- mean(pred_poisson == y_test_bin)
+cat("Accuracy (binario - naive_bayes con Poisson):", accuracy_poisson, "\n")
+
+```
+
+Laplace smoothing:
+
+```{r}
+for (alpha in c(0, 0.5, 1, 2)) {
+  model_tmp <- naiveBayes(category ~ ., data = train_df_bin, laplace = alpha)
+  pred_tmp <- predict(model_tmp, test_df_bin)
+  acc_tmp <- mean(pred_tmp == y_test_bin)
+  cat("Laplace =", alpha, " → Accuracy:", acc_tmp, "\n")
+}
+```
+
+Cross-validation:
+
+```{r}
+#Borren esto cuando ya la instalen lol - Pedro
+install.packages("caret")
+```
+
+```{r}
+library(caret)
+
+# definimos CV estratificado en 5 folds
+ctrl <- trainControl(method = "cv", number = 5)
+
+# grid de posibles valores de laplace
+grid <- expand.grid(laplace = c(0, 0.5, 1, 2),
+                    usekernel = FALSE,
+                    adjust = 1)
+
+set.seed(123)
+cv_model <- train(category ~ ., 
+                  data = train_df_bin, 
+                  method = "naive_bayes", 
+                  trControl = ctrl,
+                  tuneGrid = grid)
+
+print(cv_model)
+plot(cv_model)
+
+```
