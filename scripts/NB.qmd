@@ -16,7 +16,7 @@ library(stringr)
 ```
 
 ```{r}
-texto = read.csv("../data/ghost_stories_15000.csv")
+texto = read.csv("../data/ghost_stories_1000.csv")
 ```
 
 ```{r}
@@ -27,15 +27,38 @@ texto <- texto |>
 
 ```
 
-
 ```{r}
-texto |>
-  distinct(category)
+library(dplyr)
+
+ df <- texto |>
+  filter(category %in% c("Haunted Places",
+                         "Apparitions / Voices / Touches")) |>
+  select(story_id, title, category, story)   
+
 ```
 
 ```{r}
-words <- texto |>
-  unnest_tokens(word, story) |>
+df <- df %>%
+  mutate(story_id = row_number())
+
+write.csv(df, "../data/ghost_stories_filtered.csv", row.names = FALSE)
+view(df)
+```
+
+```{r}
+df |>
+  distinct(category)
+```
+```{r}
+df2 <- df %>%
+  transmute(doc_id = story_id,
+            category = category,
+            text = story)
+```
+
+```{r}
+words <- df2 |>
+  unnest_tokens(word, text) |>
   filter(!str_detect(word, "^[0-9]+$"))        
 ```
 
@@ -81,7 +104,7 @@ words |>
 words |>
   count(category, word, sort = TRUE) |>
   group_by(category) |>
-  slice_head(n = 6) |>
+  slice_head(n = 10) |>
   ggplot(aes(y = reorder_within(word, n, category), x = n, fill = category)) +
   geom_col(show.legend = FALSE) +
   facet_wrap(~category, scales = "free") +
@@ -90,4 +113,108 @@ words |>
 ```
 
 > Con estas repeticiones de palabras nos podemos dar una idea de como el modelo va a a predecir las categorias, ya que tomaría en cuenta la repetición y conteo de palabras por cada categoría.
+
+Sparse Matrix
+
+```{r}
+library(Matrix) 
+```
+
+```{r}
+tokens <- df2 |>
+  unnest_tokens(word, text) |>
+  filter(!str_detect(word, "^[0-9]+$")) |>
+  anti_join(stop_words, by = "word")
+```
+
+```{r}
+counts <- tokens |>
+  count(doc_id, word, name = "freq")
+```
+
+```{r}
+X <- cast_sparse(
+  counts,
+  row = doc_id,
+  col = word,
+  value = freq
+)
+```
+
+```{r}
+meta <- df2 |>
+  distinct(doc_id, category)
+```
+
+```{r}
+labels <- meta$category[match(as.integer(rownames(X)), meta$doc_id)]
+```
+
+
+Training/Test separation
+
+```{r}
+library(rsample)
+```
+
+
+```{r}
+set.seed(123)
+split <- initial_split(
+                      tibble(doc_id = rownames(X),
+                            category = labels),
+                      prop = 0.8,
+                      strata = category)
+```
+
+```{r}
+train_ids <- training(split)$doc_id
+test_ids  <- testing(split)$doc_id
+```
+
+```{r}
+train_index <- match(train_ids, rownames(X))
+test_index  <- match(test_ids, rownames(X))
+```
+
+```{r}
+X_train <- X[train_index, ]
+y_train <- labels[train_index]
+```
+
+
+```{r}
+X_test  <- X[test_index, ]
+y_test  <- labels[test_index]
+```
+
+```{r}
+train_df <- as.data.frame(as.matrix(X_train))
+train_df$category <- as.factor(y_train)
+```
+
+```{r}
+test_df <- as.data.frame(as.matrix(X_test))
+pred <- predict(nb_model, test_df)
+```
+
+```{r}
+library(e1071) 
+library(yardstick)
+```
+
+```{r}
+nb_model <- naiveBayes(category ~ ., data = train_df)
+```
+
+```{r}
+conf_mat <- table(Predicho = pred, Real = y_test)
+print(conf_mat)
+```
+
+```{r}
+accuracy <- mean(pred == y_test)
+cat("Accuracy:", accuracy, "\n")
+```
+
 
