@@ -49,6 +49,7 @@ view(df)
 df |>
   distinct(category)
 ```
+
 ```{r}
 df2 <- df %>%
   transmute(doc_id = story_id,
@@ -61,7 +62,6 @@ words <- df2 |>
   unnest_tokens(word, text) |>
   filter(!str_detect(word, "^[0-9]+$"))        
 ```
-
 
 ```{r}
 words |>
@@ -150,13 +150,11 @@ meta <- df2 |>
 labels <- meta$category[match(as.integer(rownames(X)), meta$doc_id)]
 ```
 
-
 Training/Test separation
 
 ```{r}
 library(rsample)
 ```
-
 
 ```{r}
 set.seed(123)
@@ -182,7 +180,6 @@ X_train <- X[train_index, ]
 y_train <- labels[train_index]
 ```
 
-
 ```{r}
 X_test  <- X[test_index, ]
 y_test  <- labels[test_index]
@@ -193,10 +190,7 @@ train_df <- as.data.frame(as.matrix(X_train))
 train_df$category <- as.factor(y_train)
 ```
 
-```{r}
-test_df <- as.data.frame(as.matrix(X_test))
-pred <- predict(nb_model, test_df)
-```
+
 
 ```{r}
 library(e1071) 
@@ -208,13 +202,98 @@ nb_model <- naiveBayes(category ~ ., data = train_df)
 ```
 
 ```{r}
-conf_mat <- table(Predicho = pred, Real = y_test)
-print(conf_mat)
+test_df <- as.data.frame(as.matrix(X_test))
+pred <- predict(nb_model, test_df)
 ```
 
+#### Matriz de Confusión
+```{r}
+conf_mat <- table(Predicho = pred, Real = y_test)
+print(conf_mat)
+``` 
+Clase real "Apparitions / Voices / Touches"
+
+- 28 veces se predijo correctamente.
+
+- 46 veces fueron mal clasificadas como esa clase cuando en realidad eran "Haunted Places".
+
+Clase real "Haunted Places"
+
+- 0 aciertos, el modelo nunca la predijo.
+
+Esto ya explica el sesgo del clasificador: solo aprende a reconocer la clase mayoritaria.
+
+#### Accuracy
 ```{r}
 accuracy <- mean(pred == y_test)
 cat("Accuracy:", accuracy, "\n")
 ```
+Es bajo: el modelo acierta poco más de 1 de cada 3 casos.
+
+#### Métricas por clase
+
+```{r}
+classes <- levels(y_test)
+
+get_metrics <- function(k) {
+  TP <- conf_mat[k, k]
+  FP <- sum(conf_mat[k, ]) - TP
+  FN <- sum(conf_mat[, k]) - TP
+  P  <- if ((TP + FP) == 0) NA else TP / (TP + FP)
+  R  <- if ((TP + FN) == 0) NA else TP / (TP + FN)
+  F1 <- if (is.na(P) || is.na(R) || (P + R) == 0) NA else 2 * P * R / (P + R)
+  c(Clase = k, Precision = P, Recall = R, F1 = F1)
+}
+
+metrics <- as.data.frame(do.call(rbind, lapply(classes, get_metrics)))
+metrics$Precision <- as.numeric(metrics$Precision)
+metrics$Recall    <- as.numeric(metrics$Recall)
+metrics$F1        <- as.numeric(metrics$F1)
+
+print(metrics)
+```
+
+Apparitions / Voices / Touches
+
+Precisión (0.37): de todas las veces que el modelo predijo esta clase, solo el 37 % fueron correctas.
+
+Recall (1.0): recuperó todos los casos reales de esta clase.
+
+F1 (0.55): balance intermedio; refleja que aunque cubre todo (recall perfecto), se equivoca mucho al sobrepredecirla.
+
+Haunted Places
+
+Precisión = NA: nunca fue predicha → no hay aciertos.
+
+Recall = 0: había ejemplos reales, pero el modelo no reconoció ninguno.
+
+F1 = NA: no hay balance posible, ya que no predijo nada bien de esta clase.
 
 
+#### Función naive_bayes()
+```{r}
+install.packages("naivebayes")
+```
+
+```{r}
+library(naivebayes)
+```
+
+```{r}
+nb_model2 <- naive_bayes(category ~ ., data = train_df)
+```
+
+```{r}
+pred2 <- predict(nb_model2, newdata = test_df)
+```
+
+```{r}
+conf_mat2 <- table(Predicho = pred2, Real = y_test)
+print(conf_mat2)
+```
+
+```{r}
+accuracy2 <- mean(pred2 == y_test)
+cat("Accuracy (naive_bayes):", accuracy2, "\n")
+```
+No existe ninguna diferencia entre ambos clasificadores.
