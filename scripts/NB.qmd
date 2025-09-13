@@ -1,8 +1,13 @@
 ---
-title: "NB"
+title: "Artículo 3: Clasificador naïve Bayes"
+author: "Yoseba Mireles, Santiago Pérez, Pedro Montes"
 format: html
 editor: visual
 ---
+
+# Situación problema: Ghostbusters!
+
+## Análisis del texto
 
 ```{r}
 library(bnlearn)
@@ -114,7 +119,7 @@ words |>
 
 > Con estas repeticiones de palabras nos podemos dar una idea de como el modelo va a a predecir las categorias, ya que tomaría en cuenta la repetición y conteo de palabras por cada categoría.
 
-Sparse Matrix
+## Sparse Matrix
 
 ```{r}
 library(Matrix) 
@@ -274,10 +279,6 @@ F1 = NA: no hay balance posible, ya que no predijo nada bien de esta clase.
 #### Función naive_bayes()
 
 ```{r}
-install.packages("naivebayes")
-```
-
-```{r}
 library(naivebayes)
 ```
 
@@ -398,11 +399,6 @@ for (alpha in c(0, 0.5, 1, 2)) {
 ```
 
 Cross-validation:
-
-```{r}
-#Borren esto cuando ya la instalen lol - Pedro
-install.packages("caret")
-```
 
 ```{r}
 library(caret)
